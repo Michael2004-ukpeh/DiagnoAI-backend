@@ -6,13 +6,43 @@ const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session = require('express-session');
 
 const userRouter = require('./routes/userRoutes');
+const emailRouter = require('./routes/emailRouter');
 const globalErrorHandler = require('./controllers/errorController');
+const { googleAuth } = require('./controllers/authController');
 const app = express();
 
 // 1) Global Middlewares
 // This is how we use middleware (app.use)
+
+app.use(
+  session({
+    secret: process.env.COOKIE_SECRET,
+    resave: true,
+    saveUninitialized: true,
+    // store:
+  })
+);
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: '/api/v1/users/google/callback',
+      scope: ['profile', 'email'],
+    },
+    googleAuth
+  )
+);
 
 // Set security HTTP Header (Helmet )
 app.use(helmet());
@@ -51,6 +81,7 @@ app.use(
 );
 
 // Routes
+app.use('/verifyEmail', emailRouter);
 app.use('/api/v1/users', userRouter);
 
 app.all('*', (req, res, next) => {

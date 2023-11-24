@@ -3,7 +3,7 @@ const { promisify } = require('util');
 const crypto = require('crypto');
 const catchAsync = require('../utils/catchAsync');
 const sendResponse = require('../utils/sendResponse');
-const sendEmail = require('../utils/email');
+const sendEmail = require('../utils/sendEmail');
 const AppError = require('../utils/AppError');
 const User = require('./../models/userModel');
 
@@ -114,6 +114,33 @@ exports.protect = catchAsync(async (req, res, next) => {
   next();
 });
 
+exports.updatePassword = catchAsync(async (req, res, next) => {
+  // This Method allows the user update his password without having to forget it
+
+  // Finds the user by the id of the currently logged in user
+  const user = await User.findById(req.user._id).select('password');
+  const { currentPassword, newPassword, newConfirmPassword } = req.body;
+  // Checks if the current password matches the one in the database
+  if (!(await user.correctPassword(currentPassword, user.password))) {
+    return next(new AppError('Your current password is incorrect', 401));
+  }
+  // Changes the password
+  user.password = newPassword;
+  user.confirmPassword = newConfirmPassword;
+  // Saves the user document
+  await user.save();
+
+  // Sends Response with email
+  // const emailOptions = {
+  //   subject: 'Your Password Has Been Changed',
+  //   message: `Dear ${user.firstName}, Your password was recently changed`,
+  //   email: user.email,
+  // };
+  // createAndSendTokenWithEmail(user, 200, res, next, emailOptions);
+
+  // 4) Log user in, send JWT
+  createAndSendToken(user, 200, res);
+});
 exports.refreshToken = catchAsync(async (req, res, next) => {
   const { refreshToken } = req.body;
   const decoded = await promisify(jwt.verify)(
@@ -128,7 +155,7 @@ exports.refreshToken = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.forgetPassword = catchAsync(async (req, res, next) => {
+exports.forgotPassword = catchAsync(async (req, res, next) => {
   const { email } = req.body;
   const user = await User.findOne({ email });
   if (!user) {
@@ -191,4 +218,70 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 
   req.user = user;
   createAndSendToken(user, 200, res);
+});
+
+exports.googleAuth = (
+  req,
+  res,
+  next,
+  accessToken,
+  refreshToken,
+  profile,
+  done
+) => {
+  catchAsync(
+    async (req, res, next, accessToken, refreshToken, profile, done) => {
+      try {
+        let user = await User.findOne({ email: profile.emails[0].value });
+        if (user) {
+          // Log user in
+          done(null, user);
+
+          res.status(200).json({
+            status: 'success',
+            token: accessToken,
+            refreshToken,
+            user,
+          });
+        } else {
+          // Sign user Up
+          const newUser = await User.create({
+            fullName: profile.displayName,
+            email: profile.emails[0].value,
+          });
+          done(null, user);
+          return res.status(201).json({
+            status: 'success',
+            token: accessToken,
+            refreshToken,
+            user: newUser,
+          });
+        }
+      } catch (error) {
+        next(new AppError(error.message, 400));
+      }
+    }
+  );
+};
+
+exports.verifyEmail = catchAsync(async (req, res, next) => {
+  const { token, email } = req.params;
+  const userToken = await Token.findOne({ token });
+  if (!userToken) {
+    next(new AppError('Link is invalid', 400));
+  } else {
+    if (new Date.now() > userToken.expireAt) {
+      next(new AppError('Verification Link has expired', 400));
+    } else {
+      await User.updateOne(
+        { email },
+        {
+          isVerified: true,
+        },
+        { new: true, runValidators: true }
+      );
+      await Token.findByIdAndRemove(token._id);
+      res.redirect(process.env.HOMEPAGE_URL, 301);
+    }
+  }
 });

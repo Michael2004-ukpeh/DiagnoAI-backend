@@ -19,7 +19,7 @@ const sendEmail = async (options) => {
   });
   // 2) Define Options
   const mailOptions = {
-    from: `Secret Gifter ${process.env.EMAIL_USER}`,
+    from: `DiagnoAI ${process.env.EMAIL_USER}`,
     to: options.email,
     subject: options.subject,
     text: options.text,

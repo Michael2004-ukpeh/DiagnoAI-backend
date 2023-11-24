@@ -17,17 +17,17 @@ const userSchema = new mongoose.Schema(
         'Email address provided must be a valid email address',
       ],
     },
-    role: {
-      type: String,
-      enum: ['participant', 'organizer'],
-      default: 'organizer',
+    yearOfBirth: {
+      type: Date,
+      required: true,
     },
+    // role: {
+    //   type: String,
+    //   enum: ['participant', 'organizer'],
+    //   default: 'organizer',
+    // },
     password: {
       type: String,
-      required: [
-        this.checkPasswordForParticipant,
-        'User Must Provide Password',
-      ],
       minlength: [8, 'Password must be 8 or more characters'],
       select: false,
     },
@@ -72,15 +72,21 @@ userSchema.pre('save', async function (next) {
   }
   next();
 });
-userSchema.post('save', async function () {
+userSchema.post('save', async function (req) {
   const userToken = await Token.create({
     userId: this.id,
     token: crypto.randomBytes(16).toString('hex'),
+    expireAt: new Date.now() + 24 * 60 * 60 * 1000,
   });
   await sendEmail({
     email: this.email,
-    subject: 'Secret Gifter - Confirm Sign Up',
-    text: `Welcome to Secret Gifters  `,
+    subject: 'DiagnoAi - Confirm Sign Up',
+    text: `
+    Welcome to Diagno . Confirm you signed up
+    <br/>
+    Please click http://${process.env.BASE_HOST}/verifyEmail/${this.email}/${userToken.token}
+    It expires in a day
+      `,
   });
 });
 userSchema.pre('save', async function () {
