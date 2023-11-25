@@ -4,10 +4,14 @@ const chatSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.ObjectId,
       ref: 'User',
-      required: [ture, 'User is required to create a chat'],
+      required: [true, 'User is required to create a chat'],
     },
     title: {
       type: String,
+    },
+    firstMessage: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Message',
     },
   },
   {
@@ -22,3 +26,6 @@ const chatSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+const Chat = mongoose.model('Chat', chatSchema, 'chats');
+module.exports = Chat;

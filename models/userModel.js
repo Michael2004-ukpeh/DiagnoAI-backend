@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const validator = require('validator');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const Token = require('./../models/tokenModel');
+const sendEmail = require('./../utils/sendEmail');
 const tokenEncrypt = require('./../utils/tokenEncrypt');
 const userSchema = new mongoose.Schema(
   {
@@ -16,6 +19,10 @@ const userSchema = new mongoose.Schema(
         validator.isEmail,
         'Email address provided must be a valid email address',
       ],
+    },
+    gender: {
+      type: String,
+      enum: ['male', 'female'],
     },
     yearOfBirth: {
       type: Date,
@@ -72,24 +79,7 @@ userSchema.pre('save', async function (next) {
   }
   next();
 });
-userSchema.post('save', async function (req) {
-  const userToken = await Token.create({
-    userId: this.id,
-    token: crypto.randomBytes(16).toString('hex'),
-    expireAt: new Date.now() + 24 * 60 * 60 * 1000,
-  });
-  await sendEmail({
-    email: this.email,
-    subject: 'DiagnoAi - Confirm Sign Up',
-    text: `
-    Welcome to Diagno . Confirm you signed up
-    <br/>
-    Please click http://${process.env.BASE_HOST}/verifyEmail/${this.email}/${userToken.token}
-    It expires in a day
-      `,
-  });
-});
-userSchema.pre('save', async function () {
+userSchema.pre('save', async function (next) {
   if (this.isDirectModified('password') === false || this.isNew) {
     return next();
   }
@@ -99,18 +89,30 @@ userSchema.pre('save', async function () {
   next();
 });
 
+userSchema.post('save', async function () {
+  const userToken = await Token.create({
+    userId: this.id,
+    token: crypto.randomBytes(16).toString('hex'),
+    expireAt: Date.now() + 24 * 60 * 60 * 1000,
+  });
+
+  await sendEmail({
+    email: this.email,
+    subject: 'DiagnoAi - Confirm Sign Up',
+    text: `
+    Welcome to Diagno . Confirm you signed up
+    
+    Please click http://${process.env.BASE_HOST}/verifyEmail/${this.email}/${userToken.token}
+    It expires in a day
+      `,
+  });
+});
+
 userSchema.methods.isCorrectPassword = async function (
   plainPassword,
   hashedPassword
 ) {
   return await bcrypt.compare(plainPassword, hashedPassword);
-};
-userSchema.methods.checkPasswordForParticipant = function () {
-  if (this.role === 'organizer') {
-    return true;
-  } else {
-    return false;
-  }
 };
 
 userSchema.methods.changePasswordAfter = function (JWTTimestamp) {
@@ -138,6 +140,22 @@ userSchema.methods.createPasswordResetToken = function () {
   this.passwordResetToken = Date.now() + 10 * 60 * 1000;
 
   return resetToken;
+};
+
+userSchema.methods.calculateAge = function () {
+  let currentDate = new Date();
+  let age = currentDate.getFullYear() - this.yearOfBirth.getFullYear();
+  if (
+    currentDate <
+    new Date(
+      currentDate.getFullYear(),
+      this.yearOfBirth.getMonth(),
+      this.yearOfBirth.getDate()
+    )
+  ) {
+    age--;
+  }
+  return age;
 };
 const User = mongoose.model('User', userSchema, 'users');
 

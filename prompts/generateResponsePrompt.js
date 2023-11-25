@@ -1,0 +1,1 @@
+const generateResponsePrompt = (message, user) => {};

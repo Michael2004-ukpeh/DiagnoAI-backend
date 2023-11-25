@@ -6,7 +6,7 @@ const sendResponse = require('../utils/sendResponse');
 const sendEmail = require('../utils/sendEmail');
 const AppError = require('../utils/AppError');
 const User = require('./../models/userModel');
-
+const Token = require('./../models/tokenModel');
 const signToken = (id) => {
   const token = jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
@@ -20,55 +20,48 @@ const signToken = (id) => {
 
 const createAndSendToken = async (data, statusCode, res, next) => {
   // Sign Token
-  const { token, refreshToken } = signToken(data._id);
+  const { token: accessToken, refreshToken } = signToken(data._id);
   //   // Remove Password from output
   //   data.password = undefined;
 
   // Send Response
   sendResponse(data, res, statusCode, {
-    token,
+    accessToken,
     refreshToken,
   });
 };
 
 exports.signUp = catchAsync(async (req, res, next) => {
-  const { fullName, email, role } = req.body;
-  let payload =
-    role === 'organizer'
-      ? {
-          fullName,
-          email,
-          password: req.body.password,
-          role,
-        }
-      : {
-          fullName,
-          email,
-          role,
-        };
+  const { fullName, email, yearOfBirth, gender, password } = req.body;
+  let payload = { fullName, email, yearOfBirth, gender, password };
   const newUser = await User.create(payload);
   createAndSendToken(newUser, 201, res, next);
 });
 
 exports.login = catchAsync(async (req, res, next) => {
-  const { email, role } = req.body;
-  let password;
+  const { email, password } = req.body;
+
   let user;
 
-  if (email) {
+  if (email && password) {
     user = await User.findOne({
       email,
-    });
-    if (role === 'organizer') {
-      password = req.body.password;
-      if (!user || !(await user.correctPassword(password, user.password))) {
-        return next(new AppError('Email or Password is incorrect', 401));
-      }
-    }
+    }).select('+password');
 
+    if (!user || !(await user.isCorrectPassword(password, user.password))) {
+      return next(new AppError('Email or Password is incorrect', 401));
+    }
+    if (user.isVerified === false) {
+      return next(new AppError('Please verify your email', 401));
+    }
     const { token, refreshToken } = signToken(user._id);
 
-    res.status(200).json({ status: 'success', token, refreshToken, user });
+    res.status(200).json({
+      status: 'success',
+      accessToken: token,
+      refreshToken,
+      data: user,
+    });
   } else {
     next(new AppError('Please provide email and password', 401));
   }
@@ -266,11 +259,12 @@ exports.googleAuth = (
 
 exports.verifyEmail = catchAsync(async (req, res, next) => {
   const { token, email } = req.params;
+
   const userToken = await Token.findOne({ token });
   if (!userToken) {
     next(new AppError('Link is invalid', 400));
   } else {
-    if (new Date.now() > userToken.expireAt) {
+    if (Date.now() > userToken.expireAt) {
       next(new AppError('Verification Link has expired', 400));
     } else {
       await User.updateOne(
@@ -280,8 +274,8 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
         },
         { new: true, runValidators: true }
       );
-      await Token.findByIdAndRemove(token._id);
-      res.redirect(process.env.HOMEPAGE_URL, 301);
+      await Token.findByIdAndDelete(token._id);
+      res.redirect(process.env.HOMEPAGE_URL);
     }
   }
 });
