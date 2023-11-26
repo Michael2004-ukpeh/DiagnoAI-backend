@@ -19,7 +19,7 @@ const messageSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'health assistant'],
+      enum: ['user', 'assistant'],
     },
   },
   {
@@ -35,6 +35,5 @@ const messageSchema = new mongoose.Schema(
   }
 );
 
-messageSchema.post('save', async function () {});
-
 const Message = mongoose.model('message', messageSchema, 'messages');
+module.exports = Message;

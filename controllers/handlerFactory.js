@@ -22,7 +22,7 @@ exports.getAll = (Model) =>
 
     // 1B)Advanced Filtering
 
-    const count = await Model.count(queryObj);
+    const count = await Model.countDocuments(queryObj);
 
     const doc = await features.query;
     const total = Math.ceil(count / limit);

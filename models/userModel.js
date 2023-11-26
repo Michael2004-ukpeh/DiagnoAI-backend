@@ -115,7 +115,7 @@ userSchema.methods.isCorrectPassword = async function (
   return await bcrypt.compare(plainPassword, hashedPassword);
 };
 
-userSchema.methods.changePasswordAfter = function (JWTTimestamp) {
+userSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   // This checks if the password was changed after the token has been signed and sent
   if (this.passwordChangedAt) {
     // Convert the pasword changed time to timestamp

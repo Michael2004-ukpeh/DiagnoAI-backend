@@ -1,20 +1,21 @@
-const catchAsync = require('./utils/catchAsync');
+const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 const User = require('../models/userModel');
 const Chat = require('../models/chatModel');
 const Message = require('../models/messageModel');
-const sendResponse = require('../utils/sendResponse');
+
 const redisClient = require('./../utils/redisClient');
 const generateUserPrompt = require('../prompts/generateUserPrompt');
-const client = require('./../utils/redisClient');
-const { generateAIResponse } = require('./../openAI');
-const sendMessage = catchAsync(async (req, res, next) => {
+
+const { generateAIResponse, generateAITitle } = require('./../openAI');
+exports.sendMessage = catchAsync(async (req, res, next) => {
   try {
     const { content, chatId } = req.body;
-    const { _id: userId, gender } = req.user;
+
+    const { _id: userId } = req.user;
     const user = await User.findById(userId);
     let chat;
-    let message;
+    let newMessage;
     let responseMessage;
     let messagePrompts;
     await redisClient.connect();
@@ -25,7 +26,7 @@ const sendMessage = catchAsync(async (req, res, next) => {
         user: userId,
       });
       await chat.save();
-      let newMessage = new Message({
+      newMessage = new Message({
         user: userId,
         chat: chat.id,
         content: content,
@@ -51,12 +52,12 @@ const sendMessage = catchAsync(async (req, res, next) => {
 
       chat.firstMessage = newMessage.id;
       await chat.save();
-      message = newMessage;
+
       messagePrompts = chatPrompts;
     } else {
       // Fetch last message
       chat = await Chat.findById(chatId);
-      let newMessage = new Message({
+      newMessage = new Message({
         user: userId,
         chat: chat.id,
         content: content,
@@ -79,7 +80,7 @@ const sendMessage = catchAsync(async (req, res, next) => {
       ];
 
       await redisClient.set(String(chat.id), JSON.stringify(newChatPrompts));
-      message = newMessage;
+
       messagePrompts = newChatPrompts;
     }
 
@@ -87,17 +88,69 @@ const sendMessage = catchAsync(async (req, res, next) => {
 
     const aiResponse = await generateAIResponse(messagePrompts);
 
+    // Generate title
+
+    if (chat.firstMessage.equals(newMessage._id)) {
+      const title = await generateAITitle(aiResponse);
+
+      chat.title = title;
+
+      await chat.save();
+    }
     // Create Message Document
 
     responseMessage = new Message({
       user: userId,
+      chat: chat.id,
+      content: aiResponse,
+      role: 'assistant',
     });
+    await responseMessage.save();
+    newMessage.nextMessage = responseMessage.id;
 
     //Persist in cache
 
+    // Fetch messages from Redis to form prompt chain
+    let chatPrompts = await redisClient.get(String(chat.id));
+    //   Update Chat messages
+    const newChatPrompts = [
+      ...JSON.parse(chatPrompts),
+      { role: 'assistant', content: responseMessage.content },
+    ];
+
+    await redisClient.set(String(chat.id), JSON.stringify(newChatPrompts));
+
     // Return response
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        originalMessage: newMessage,
+        responseMessage,
+        chat,
+      },
+    });
   } catch (error) {
-    next(new AppError(error.message, '400'));
+    next(new AppError(error, 500));
+  } finally {
+    await redisClient.disconnect();
+  }
+});
+
+exports.fetchChatMessages = catchAsync(async (req, res, next) => {
+  try {
+    const { chatId } = req.params;
+    if (!chatId) {
+      next(new AppError('Chat Id must be provided', 400));
+    }
+    await redisClient.connect();
+    const messages = JSON.parse(await redisClient.get(String(chatId))).slice(2);
+    res.status(200).json({
+      status: 'success',
+      count: messages.length,
+      data: messages,
+    });
+  } catch (error) {
+    next(new AppError(error, 500));
   } finally {
     await redisClient.disconnect();
   }

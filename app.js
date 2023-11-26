@@ -9,9 +9,11 @@ const hpp = require('hpp');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
-
+const AppError = require('./utils/AppError');
 const userRouter = require('./routes/userRoutes');
 const emailRouter = require('./routes/emailRouter');
+const messsageRouter = require('./routes/messageRoutes');
+const chatRouter = require('./routes/chatRoutes');
 const globalErrorHandler = require('./controllers/errorController');
 const { googleAuth } = require('./controllers/authController');
 const app = express();
@@ -83,6 +85,8 @@ app.use(
 // Routes
 app.use('/verifyEmail', emailRouter);
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/messages', messsageRouter);
+app.use('/api/v1/chats', chatRouter);
 
 app.all('*', (req, res, next) => {
   const err = new AppError(`Can't find ${req.originalUrl} on this server`, 404);
