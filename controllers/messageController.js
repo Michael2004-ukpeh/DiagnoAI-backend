@@ -18,6 +18,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     let newMessage;
     let responseMessage;
     let messagePrompts;
+
     await redisClient.connect();
     if (!chatId) {
       // Create a new Chat if the message is in a fresh chat
@@ -142,12 +143,22 @@ exports.fetchChatMessages = catchAsync(async (req, res, next) => {
     if (!chatId) {
       next(new AppError('Chat Id must be provided', 400));
     }
+    const chat = await Chat.findById(chatId);
     await redisClient.connect();
-    const messages = JSON.parse(await redisClient.get(String(chatId))).slice(2);
+    const messages = JSON.parse(await redisClient.get(String(chatId)));
+
+    if (messages == null || !chat || (messages == null && !chat)) {
+      return res.status(200).json({
+        status: 'success',
+        message: "Chat doesn't exist",
+        count: 0,
+        data: null,
+      });
+    }
     res.status(200).json({
       status: 'success',
-      count: messages.length,
-      data: messages,
+      count: messages.slice(2).length,
+      data: messages.slice(2),
     });
   } catch (error) {
     next(new AppError(error, 500));

@@ -67,8 +67,9 @@ exports.deleteOne = (Model) => {
       return next(new AppError('No document Found With That ID', 404));
     }
 
-    res.status(204).json({
+    res.status(200).json({
       status: 'Success',
+      message: 'Document deleted',
       data: null,
     });
   });
