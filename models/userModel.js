@@ -102,7 +102,7 @@ userSchema.post('save', async function () {
     text: `
     Welcome to Diagno . Confirm you signed up
     
-    Please click http://${process.env.BASE_HOST}/verifyEmail/${this.email}/${userToken.token}
+    Please click ${process.env.BASE_HOST}/verifyEmail/${this.email}/${userToken.token}
     It expires in a day
       `,
   });
